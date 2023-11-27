@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "math.h"
 #include "Display_API.h"
 
 /* USER CODE END Includes */
@@ -43,32 +44,46 @@
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
+DMA_HandleTypeDef hdma_tim1_ch1;
 
 /* USER CODE BEGIN PV */
 
-struct display_data {
-
-	uint8_t fsm;
-	uint8_t index;
-
-} display_handle = { .fsm = 0, .index = 7, };
+uint32_t previousMillis = 0;
+uint32_t currentMillis = 0;
+uint32_t counterOutside = 0; //For testing only
+uint32_t counterInside = 0; //For testing only
 
 int i = 0;
 int number;
 int var = 0;
 int idx = 0;
 int idx2 = 0;
-int unid, dez, cent;
+int unid, dez, cent,unid_vet[8],dez_vet[8],cent_vet[8];
 int fsm = 0;
 int index1 = 0;
 int display_clock = 0;
 int downcounter = 0;
+int downcounter_timer4= 0;
+int counter_timer4= 0;
+int myIndex=7;
+
+int brilho =23;
+int color,Red=100,Green=200,Blue=255;
+
+enum color {
+	branco,
+	verde,
+	amarelo,
+	vermelho,
+	azul,
+};
 
 int digits[11][8] = {
 
-{ 0, 1, 1, 1, 1, 1, 1, 0 }, //digit 0
+		{ 0, 1, 1, 1, 1, 1, 1, 0 }, //digit 0
 		{ 0, 0, 1, 1, 0, 0, 0, 0 }, //digit 1
 		{ 0, 1, 1, 0, 1, 1, 0, 1 }, //digit 2
 		{ 0, 1, 1, 1, 1, 0, 0, 1 }, //digit 3
@@ -77,7 +92,7 @@ int digits[11][8] = {
 		{ 0, 1, 0, 1, 1, 1, 1, 1 }, //digit 6
 		{ 0, 1, 1, 1, 0, 0, 0, 0 }, //digit 7
 		{ 0, 1, 1, 1, 1, 1, 1, 1 }, //digit 8
-		{ 0, 1, 1, 1, 1, 0, 1, 1 },  //digit 9
+		{ 0, 1, 1, 1, 1, 0, 1, 1 }, //digit 9
 		{ 0, 0, 0, 0, 0, 0, 0, 0 }  //null
 };
 
@@ -86,9 +101,19 @@ int digits[11][8] = {
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM1_Init(void);
+
+void DigitExtract(int);
+void Display(int,int);
+int AnalogHandler(int);
+void LEDHandler(int);
+void Set_LED (int, int , int , int );
+void Set_Brightness(int);
+void WS2512_Send (void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -96,7 +121,16 @@ static void MX_ADC1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+#define MAX_LED 20			//numero máximo de leds para acender em sequencia
+#define MAX_Brightness 45	// brilho máximo entre 0 e 45
+#define USE_BRIGHTNESS 1
+
+uint8_t LED_Data[MAX_LED][4];
+uint8_t LED_Mod[MAX_LED][4];	//para o brilho
+
 uint16_t readValue;
+
+int datasentflag = 0;
 
 /* USER CODE END 0 */
 
@@ -128,17 +162,23 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM4_Init();
   MX_TIM3_Init();
   MX_ADC1_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
 	HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_Base_Start_IT(&htim3);
-	HAL_GPIO_WritePin(GPIOC, DIG1, 0);
-	HAL_GPIO_WritePin(GPIOC, DIG2, 0);
-	HAL_GPIO_WritePin(GPIOC, DIG3, 0);
+	HAL_GPIO_WritePin(GPIOC, DIG1, 1);
+	HAL_GPIO_WritePin(GPIOC, DIG2, 1);
+	HAL_GPIO_WritePin(GPIOC, DIG3, 1);
 	HAL_ADC_Start(&hadc1);
+
+	 WS2512_Send();
+
+	 counter_timer4=0;
 
   /* USER CODE END 2 */
 
@@ -148,18 +188,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+		//downcounter_timer4=1000;
+
 		HAL_ADC_PollForConversion(&hadc1, 1000);
 		readValue = HAL_ADC_GetValue(&hadc1);
 
-		var = AnalogHandler(readValue);
+//		var = AnalogHandler(readValue);
 
+		LEDHandler(var);
 		DigitExtract(var);
-		Display(unid, 1);
-		Display(dez, 2);
-		if(cent==0){
-			cent=10;
-		}
-		Display(cent, 3);
 
 	}
   /* USER CODE END 3 */
@@ -197,14 +234,14 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV2;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -255,6 +292,81 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 90-1;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+  HAL_TIM_MspPostInit(&htim1);
 
 }
 
@@ -349,6 +461,22 @@ static void MX_TIM4_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -363,6 +491,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, DIGIT3_Pin|DIGIT2_Pin|DIGIT1_Pin, GPIO_PIN_RESET);
@@ -377,6 +506,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pins : SHCP_pin_Pin STCP_pin_Pin DS_pin_Pin */
   GPIO_InitStruct.Pin = SHCP_pin_Pin|STCP_pin_Pin|DS_pin_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -384,12 +519,459 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+
+	currentMillis = HAL_GetTick();
+
+	if ((currentMillis - previousMillis) > 200) {
+
+		//brilho = brilho + 5;
+
+		switch(color){
+
+		case branco:
+			Red=255;
+			Green=255;
+			Blue=255;
+
+			color=verde;
+
+		break;
+
+		case verde:
+			Red=0;
+			Green=255;
+			Blue=0;
+
+			color=amarelo;
+		break;
+
+		case amarelo:
+			Red=255;
+			Green=255;
+			Blue=0;
+
+			color=vermelho;
+			break;
+
+		case vermelho:
+			Red=255;
+			Green=0;
+			Blue=0;
+
+			color = azul;
+			break;
+
+		case azul:
+		Red=0;
+		Green=0;
+		Blue=255;
+
+		color=branco;
+
+		break;
+
+		default:
+			break;
+
+		}
+
+
+//		if (brilho >= 45) {
+//			brilho = 1;
+//		}
+
+
+
+		previousMillis = currentMillis;
+
+	}
+}
+
+
+//TODO Documentar método
+void LEDHandler(int Value) {
+
+
+
+	//brilho = Value * MAX_Brightness / 100;
+
+	//lógica para acionamento sequencial
+	if (Value == 0 ) {
+		Set_LED(0, 0, 0, 0);
+		Set_LED(1, 0, 0, 0);
+		Set_LED(2, 0, 0, 0);
+		Set_LED(3, 0, 0, 0);
+		Set_LED(4, 0, 0, 0);
+		Set_LED(5, 0, 0, 0);
+		Set_LED(6, 0, 0, 0);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	}
+	if (Value >= 1 && Value < 6) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, 0, 0, 0);
+		Set_LED(2, 0, 0, 0);
+		Set_LED(3, 0, 0, 0);
+		Set_LED(4, 0, 0, 0);
+		Set_LED(5, 0, 0, 0);
+		Set_LED(6, 0, 0, 0);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+
+
+	} else if (Value >= 6 && Value < 12) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, 0, 0, 0);
+		Set_LED(3, 0, 0, 0);
+		Set_LED(4, 0, 0, 0);
+		Set_LED(5, 0, 0, 0);
+		Set_LED(6, 0, 0, 0);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 12 && Value < 18) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, 0, 0, 0);
+		Set_LED(3, 0, 0, 0);
+		Set_LED(4, 0, 0, 0);
+		Set_LED(5, 0, 0, 0);
+		Set_LED(6, 0, 0, 0);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 18 && Value < 24) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, 0, 0, 0);
+		Set_LED(5, 0, 0, 0);
+		Set_LED(6, 0, 0, 0);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 24 && Value < 30) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, 0, 0, 0);
+		Set_LED(6, 0, 0, 0);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 30 && Value < 36) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, 0, 0, 0);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 36 && Value < 42) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, 0, 0, 0);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 42 && Value < 48) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, 0, 0, 0);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 48 && Value < 54) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, 0, 0, 0);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+
+	} else if (Value >= 54 && Value < 60) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10, 0, 0, 0);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+	} else if (Value >= 60 && Value < 66) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10, Red, Green, Blue);
+		Set_LED(11, 0, 0, 0);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+	} else if (Value >= 66 && Value < 72) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10, Red, Green, Blue);
+		Set_LED(11, Red, Green, Blue);
+		Set_LED(12, 0, 0, 0);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+	} else if (Value >= 72 && Value < 78) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10, Red, Green, Blue);
+		Set_LED(11, Red, Green, Blue);
+		Set_LED(12, Red, Green, Blue);
+		Set_LED(13, 0, 0, 0);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+	} else if (Value >= 78 && Value < 84) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10,Red, Green, Blue);
+		Set_LED(11, Red, Green, Blue);
+		Set_LED(12, Red, Green, Blue);
+		Set_LED(13, Red, Green, Blue);
+		Set_LED(14, 0, 0, 0);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+	} else if (Value >= 84 && Value < 90) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10, Red, Green, Blue);
+		Set_LED(11, Red, Green, Blue);
+		Set_LED(12, Red, Green, Blue);
+		Set_LED(13, Red, Green, Blue);
+		Set_LED(14, Red, Green, Blue);
+		Set_LED(15, 0, 0, 0);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+	} else if (Value >= 90 && Value < 96) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10, Red, Green, Blue);
+		Set_LED(11, Red, Green, Blue);
+		Set_LED(12, Red, Green, Blue);
+		Set_LED(13, Red, Green, Blue);
+		Set_LED(14, Red, Green, Blue);
+		Set_LED(15, Red, Green, Blue);
+		Set_LED(16, 0, 0, 0);
+		Set_LED(17, 0, 0, 0);
+	} else if (Value >= 96 && Value < 101) {
+		Set_LED(0, Red, Green, Blue);
+		Set_LED(1, Red, Green, Blue);
+		Set_LED(2, Red, Green, Blue);
+		Set_LED(3, Red, Green, Blue);
+		Set_LED(4, Red, Green, Blue);
+		Set_LED(5, Red, Green, Blue);
+		Set_LED(6, Red, Green, Blue);
+		Set_LED(7, Red, Green, Blue);
+		Set_LED(8, Red, Green, Blue);
+		Set_LED(9, Red, Green, Blue);
+		Set_LED(10, Red, Green, Blue);
+		Set_LED(11, Red, Green, Blue);
+		Set_LED(12, Red, Green, Blue);
+		Set_LED(13, Red, Green, Blue);
+		Set_LED(14, Red, Green, Blue);
+		Set_LED(15, Red, Green, Blue);
+		Set_LED(16, Red, Green, Blue);
+		Set_LED(17, 0, 0, 0);
+	}
+
+
+	Set_Brightness(brilho);
+	WS2512_Send();
+	HAL_Delay(50);
+}
+
+//TODO Documentar método
 int AnalogHandler(int Value){
 
 	Value = Value*100/4095;
@@ -404,99 +986,84 @@ int AnalogHandler(int Value){
 
 }
 
-//void Display(struct display_data *handle){
+//TODO Documentar método
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
+{
+	HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_1);
+	datasentflag = 1;
+}
+
+//TODO Documentar método
+void Set_LED (int LEDnum, int Red, int Green, int Blue)
+{
+	LED_Data[LEDnum][0] = LEDnum;
+	LED_Data[LEDnum][1] = Green;
+	LED_Data[LEDnum][2] = Red;
+	LED_Data[LEDnum][3] = Blue;
+}
+
+
+//TODO Documentar método
 void Display(int value, int digit) {
 
-	/* Versão com delay*/
+	//downcounter=50;while(downcounter>0){};
+	//HAL_Delay(0.05);
+
+//	HAL_GPIO_WritePin(GPIOB, STCP_pin, 0); // INICIO DA MENSAGEM
+//	downcounter = 5;while (downcounter > 0);
+
+//	for (int index = 7; index >= 0; index--) {
+//
+//		if (digits[value][index] == 1) {
+//			HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
+//		}
+//
+//		else if (digits[value][index] == 0) {
+//			HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
+//		}
+//
+//		HAL_GPIO_WritePin(GPIOB, SHCP_pin, 0); //CLOCK LOW
+//		downcounter = 50;while (downcounter > 0);
+//
+//		HAL_GPIO_WritePin(GPIOB, SHCP_pin, 1); //CLOCK HIGH
+//		downcounter = 50;while (downcounter > 0);
+//
+//	}
+
+//	HAL_GPIO_WritePin(GPIOB, STCP_pin, 1);  // fim da mensagem (SEND ou LATCH)
+	//downcounter = 50;while (downcounter > 0);
 
 
-	downcounter=100;while(downcounter>0){};
-		HAL_GPIO_WritePin(GPIOB, STCP_pin, 0); // INICIO DA MENSAGEM
-//		HAL_Delay(0.05);
+//	HAL_GPIO_WritePin(GPIOC, DIG1, 0);
+//	HAL_GPIO_WritePin(GPIOC, DIG2, 0);
+//	HAL_GPIO_WritePin(GPIOC, DIG3, 0);
+//	downcounter = 50;while (downcounter > 0);
+//
+//
+//	if (digit == 1) {
+//		HAL_GPIO_WritePin(GPIOC, DIG1, 0);
+//		HAL_GPIO_WritePin(GPIOC, DIG2, 0);
+//		HAL_GPIO_WritePin(GPIOC, DIG3, 1);
+//
+//		//downcounter = 5;while (downcounter > 0);
+//
+//	} else if (digit == 2) {
+//		HAL_GPIO_WritePin(GPIOC, DIG1, 0);
+//		HAL_GPIO_WritePin(GPIOC, DIG2, 1);
+//		HAL_GPIO_WritePin(GPIOC, DIG3, 0);
+//
+//		//downcounter = 5;while (downcounter > 0);
+//
+//	} else {
+//		HAL_GPIO_WritePin(GPIOC, DIG1, 1);
+//		HAL_GPIO_WritePin(GPIOC, DIG2, 0);
+//		HAL_GPIO_WritePin(GPIOC, DIG3, 0);
+//
+//		//downcounter = 5;while (downcounter > 0);
+//	}
 
-	for (int index = 7; index >= 0; index--) {
-
-
-			HAL_GPIO_WritePin(GPIOB, SHCP_pin, 0); //CLOCK LOW
-			downcounter=10;while(downcounter>0);
-			//HAL_Delay(0.01);
-
-			if (digits[value][index] == 1) {
-				HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
-			}
-
-			else if (digits[value][index] == 0) {
-				HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
-			}
-			HAL_GPIO_WritePin(GPIOB, SHCP_pin, 1); //CLOCK HIGH
-			downcounter=10;while(downcounter>0);
-			//HAL_Delay(0.01);
-	}
-
-	HAL_GPIO_WritePin(GPIOB, STCP_pin, 1);  // fim da mensagem (SEND ou LATCH)
-
-	if (digit == 1) {
-		HAL_GPIO_WritePin(GPIOC, DIG1, 0);			//HAL_Delay(.1);
-		HAL_GPIO_WritePin(GPIOC, DIG2, 0);			//HAL_Delay(.1);
-		HAL_GPIO_WritePin(GPIOC, DIG3, 1);			//HAL_Delay(.1);
-		downcounter=10;while(downcounter>0);
-	} else if (digit == 2) {
-		HAL_GPIO_WritePin(GPIOC, DIG1, 0);			//HAL_Delay(.1);
-		HAL_GPIO_WritePin(GPIOC, DIG2, 1);			//HAL_Delay(.1);
-		HAL_GPIO_WritePin(GPIOC, DIG3, 0);			//HAL_Delay(.1);
-		downcounter=10;while(downcounter>0);
-	} else {
-		HAL_GPIO_WritePin(GPIOC, DIG1, 1);			//HAL_Delay(.1);
-		HAL_GPIO_WritePin(GPIOC, DIG2, 0);			//HAL_Delay(.1);
-		HAL_GPIO_WritePin(GPIOC, DIG3, 0);			//HAL_Delay(.1);
-		downcounter=10;while(downcounter>0);
-	}
-
-
-
-
-
-
-
-	/* Versão não funcional
-
-	if (display_clock == 0) {
-		HAL_GPIO_WritePin(GPIOB, STCP_pin, 0); // INICIO DA MENSAGEM
-	}
-
-	else if (display_clock == 2 || display_clock == 4 || display_clock == 6
-			|| display_clock == 8 || display_clock == 10 || display_clock == 12
-			|| display_clock == 14 || display_clock == 14) {
-
-		//INTERVALO
-	}
-
-	else if (display_clock >= 15) {
-
-		if (digits[value][index1] == 1) {
-			HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
-		}
-
-		else if (digits[value][index1] == 0) {
-			HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
-		}
-
-		//HAL_Delay(1);
-		HAL_GPIO_WritePin(GPIOB, STCP_pin, 1); // FIM DA MENSAGEM
-	}
-
-	else {
-
-		if (digits[value][index1] == 1) {
-			HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
-		}
-
-		else if (digits[value][index1] == 0) {
-			HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
-		}
-	}
-		 */
-
+	//Final do ciclo de cada dígito
+//	downcounter = 100;while (downcounter > 0);
 }
 
 
@@ -513,48 +1080,283 @@ void DigitExtract(int num) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
-	if (htim->Instance == TIM4) //frequencia do timer é de 5 kHz, st=200us
+	if (htim->Instance == TIM4) //frequencia do timer4 é de 5 kHz, st=200us
 	{
 
-		//atualizar a contagem a cada 1000 ms
-		if (idx < 501) {
+		if (idx < 250) {		//atualizar a contagem a cada 500 ms
 
 			idx++;
 		} else {
-			//var = var + 1;
 
-			if (var > 500) {
-			//	var = 0;
-			}
+			var = AnalogHandler(readValue);		//atualização do valor do sinal analógico
 
 			idx = 1;
 		}
 
-		//cada 1 ms
-//		if (idx2 < 5) {
-//
-//			idx2++;
-//		} else {
-//
-//			idx2 = 0;
-//
-//			if (downcounter > 0) {
-//				downcounter--;
-//			}
-//		}
+		if (downcounter_timer4 > 0) {
+			downcounter_timer4--;
+		}
 
+		counter_timer4++;
 	}
 
-	if (htim->Instance == TIM3) //frequencia do timer é de 50 kHz, time=20us
-	{
+	if (htim->Instance == TIM3) { //frequencia do timer3 é de 50 kHz, time=20us
 
 		if (downcounter > 0) {
 			downcounter--;
 		}
 
+		else { 					//downcounter liberado
+
+			// INICIO DO CICLO DE 100 Hz ->
+
+			switch (fsm) {
+
+			case 0: //inicio da mensagem 1
+			case 2:
+			case 4:
+			case 6:
+			case 8:
+			case 10:
+			case 12:
+			case 14:
+
+				HAL_GPIO_WritePin(GPIOB, STCP_pin, 0);		//inicio da mensagem
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+
+				if (digits[cent][myIndex] == 1) {
+					HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
+				} else {
+					HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
+				}
+
+				break;
+
+			case 1:
+			case 3:
+			case 5:
+			case 7:
+			case 9:
+			case 11:
+			case 13:
+			case 15:
+
+				myIndex--;
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				break;
+
+			case (16):
+
+				//+15	final da mensagem 1 e liga digit 1
+
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				HAL_GPIO_WritePin(GPIOB, STCP_pin, 1);		//FIM da mensagem
+				HAL_GPIO_WritePin(GPIOC, DIG1, 1);
+				myIndex = 7;
+
+				break;
+
+			case 165:
+
+				//+150	desliga digito 1
+
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				HAL_GPIO_WritePin(GPIOC, DIG1, 0);
+
+				break;
+
+			case 215: //+50	inicio da mensagem 2
+			case 217:
+			case 219:
+			case 221:
+			case 223:
+			case 225:
+			case 227:
+			case 229:
+
+				HAL_GPIO_WritePin(GPIOB, STCP_pin, 0);		//inicio da mensagem
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+
+				if (digits[dez][myIndex] == 1) {
+					HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
+				} else {
+					HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
+				}
+
+				break;
+
+			case 216:
+			case 218:
+			case 220:
+			case 222:
+			case 224:
+			case 226:
+			case 228:
+			case 230:
+
+				myIndex--;
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				break;
+
+			case 231:
+
+				//+15 final da mensagem 2 e liga digit 2
+
+				myIndex = 7;
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				HAL_GPIO_WritePin(GPIOB, STCP_pin, 1);		//FIM da mensagem
+				HAL_GPIO_WritePin(GPIOC, DIG2, 1);
+
+				break;
+
+			case 380:
+
+				//+150 desliga digito 2
+
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				HAL_GPIO_WritePin(GPIOC, DIG2, 0);
+
+				break;
+
+			case 430:	//+50	inicio da mensagem 3
+			case 432:
+			case 434:
+			case 436:
+			case 438:
+			case 440:
+			case 442:
+			case 444:
+
+				HAL_GPIO_WritePin(GPIOB, STCP_pin, 0);		//inicio da mensagem
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+
+				if (digits[unid][myIndex] == 1) {
+					HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
+				} else {
+					HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
+				}
+
+				break;
+
+			case 431:
+			case 433:
+			case 435:
+			case 437:
+			case 439:
+			case 441:
+			case 443:
+			case 445:
+
+				myIndex--;
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				break;
+
+			case 446:
+
+				//+15 final da mensagem 3 e liga digit 3
+
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				HAL_GPIO_WritePin(GPIOB, STCP_pin, 1);		//FIM da mensagem
+				HAL_GPIO_WritePin(GPIOC, DIG3, 1);
+				myIndex = 7;
+
+				break;
+
+			case 595:
+
+				//+150 desliga digito 3
+
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+				HAL_GPIO_WritePin(GPIOC, DIG3, 0);
+
+				break;
+
+			case 597:
+
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);		//CLOCK
+
+				//FIM DO CICLO
+
+				downcounter = 50;		//tempo morto de 1ms
+				fsm = -1;
+				myIndex = 7;
+				break;
+
+			default:
+				HAL_GPIO_TogglePin(GPIOB, SHCP_pin);	//CLOCK
+
+				break;
+
+			}
+
+			// fim do ciclo interno dos 3 digitos
+			fsm++;
+
+		}
 	}
 
 }
+
+#define PI 3.14159265
+
+void Set_Brightness(int brightness) // 0~45 linearização do brilho
+{
+#if USE_BRIGHTNESS
+
+	if (brightness > 45)
+		brightness = 45;
+	for (int i = 0; i < MAX_LED; i++) {
+		LED_Mod[i][0] = LED_Data[i][0];
+		for (int j = 1; j < 4; j++) {
+			float angle = 90 - brightness; // em graus
+			angle = angle * PI / 180; //em radianos
+			LED_Mod[i][j] = (LED_Data[i][j]) / (tan(angle));
+		}
+	}
+}
+
+#endif
+
+uint16_t pwmData[(24*MAX_LED+50)];
+
+void WS2512_Send(void) {
+	uint32_t indx = 0;
+	uint32_t color;
+
+//	for (int i=0; i<50; i++)
+//	{
+//		pwmData[indx] = 0;
+//		indx++;
+//	}
+
+	for (int i = 0; i < MAX_LED; i++)
+	{
+		color = ((LED_Mod[i][1] << 16) | (LED_Mod[i][2] << 8) | (LED_Mod[i][3]));
+
+		for (int i = 23; i >= 0; i--) {
+			if (color & (1 << i)) {
+				pwmData[indx] = 60;		// pulso alto, 2/3 de 90, aprox 68%
+			}
+
+			else
+				pwmData[indx] = 30;	// pulso baixo, 1/3 de 90, aprox 32%
+
+			indx++;
+		}
+	}
+
+	for (int i = 0; i < 50; i++)//intervalor de tempo de 50us antes da próxima msg
+			{
+		pwmData[indx] = 0;
+		indx++;
+	}
+
+	HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, (uint32_t*) pwmData, indx);
+	while (!datasentflag) {
+	};
+	datasentflag = 0;
+}
+
 
 /* USER CODE END 4 */
 
