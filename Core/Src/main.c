@@ -33,6 +33,10 @@
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
+/* Parâmetros utilizados para leitura dos sensores analógicos */
+#define BSP_ADC_CHANNEL_SIZE 1
+#define BSP_ADC_FILTER_SAMPLES_SIZE 10
+
 /* USER CODE BEGIN PD */
 /* USER CODE END PD */
 
@@ -50,6 +54,12 @@ TIM_HandleTypeDef htim4;
 DMA_HandleTypeDef hdma_tim1_ch1;
 
 /* USER CODE BEGIN PV */
+
+/* Buffer utilizado pelo DMA para armazenar os valores lidos pelo ADC */
+static volatile uint16_t Buffer_ADC_DMA[BSP_ADC_CHANNEL_SIZE];
+
+/* Buffer utilizado para armazenar as ultimas x amostras obtidas pelo ADC */
+static volatile uint16_t Buffer_ADC_Filter[BSP_ADC_CHANNEL_SIZE][BSP_ADC_FILTER_SAMPLES_SIZE];
 
 uint32_t previousMillis = 0;
 uint32_t currentMillis = 0;
@@ -192,6 +202,7 @@ int main(void)
 
 		HAL_ADC_PollForConversion(&hadc1, 1000);
 		readValue = HAL_ADC_GetValue(&hadc1);
+
 
 //		var = AnalogHandler(readValue);
 
@@ -974,7 +985,36 @@ void LEDHandler(int Value) {
 //TODO Documentar método
 int AnalogHandler(int Value){
 
-	Value = Value*100/4095;
+	/* Processa as novas amostras */
+	int32_t accumulator[BSP_ADC_CHANNEL_SIZE] = { 0 };
+	static int16_t filter_sample_index = 0;
+
+	//guarda a amostra atual
+	Buffer_ADC_Filter[0][filter_sample_index] = Value;
+
+	//Processa o novo valor filtrado considerando as ultimas x amostras
+	for (int sample_idx = 0; sample_idx < BSP_ADC_FILTER_SAMPLES_SIZE;++sample_idx)
+	{
+		accumulator[0] += Buffer_ADC_Filter[0][sample_idx];
+	}
+
+	//wrap around no buffer
+	filter_sample_index++;
+	if (filter_sample_index >= BSP_ADC_FILTER_SAMPLES_SIZE)
+	{
+		filter_sample_index = 0;
+	}
+
+	int64_t sensor1_64bits = accumulator[0];
+
+	sensor1_64bits = (sensor1_64bits / BSP_ADC_FILTER_SAMPLES_SIZE);
+
+	//370mV )( 459 bits) a 1930mV (2395 bits)
+	int max = 2137;
+	int min = 968;
+
+	Value = ( sensor1_64bits - min ) *100 / (max - min ); //conversao para uso do pedal Ranger
+
 
 	if ( Value > 100){
 		Value = 100;
@@ -1067,7 +1107,6 @@ void Display(int value, int digit) {
 }
 
 
-
 void DigitExtract(int num) {
 
 //	int unid, dez, cent;
@@ -1083,7 +1122,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim->Instance == TIM4) //frequencia do timer4 é de 5 kHz, st=200us
 	{
 
-		if (idx < 250) {		//atualizar a contagem a cada 500 ms
+		if (idx < 200) {		//atualizar a contagem a cada 500 ms
 
 			idx++;
 		} else {
