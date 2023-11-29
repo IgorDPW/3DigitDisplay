@@ -47,6 +47,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
@@ -83,6 +84,10 @@ int myIndex=7;
 int brilho =23;
 int color,Red=100,Green=200,Blue=255;
 
+int32_t Speed_Signal_Input;
+int32_t Speed_Signal_Output;
+int Speed_Mode;
+
 enum color {
 	branco,
 	verde,
@@ -117,6 +122,7 @@ static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
 
+
 void DigitExtract(int);
 void Display(int,int);
 int AnalogHandler(int);
@@ -134,6 +140,10 @@ void WS2512_Send (void);
 #define MAX_LED 20			//numero máximo de leds para acender em sequencia
 #define MAX_Brightness 45	// brilho máximo entre 0 e 45
 #define USE_BRIGHTNESS 1
+#define ADC_CH_NMR 3		// quantidade de canais ADC utilizados
+
+uint32_t ADC_Buffer[3];	//a conversao ADC será salva nesta variável
+
 
 uint8_t LED_Data[MAX_LED][4];
 uint8_t LED_Mod[MAX_LED][4];	//para o brilho
@@ -184,7 +194,10 @@ int main(void)
 	HAL_GPIO_WritePin(GPIOC, DIG1, 1);
 	HAL_GPIO_WritePin(GPIOC, DIG2, 1);
 	HAL_GPIO_WritePin(GPIOC, DIG3, 1);
-	HAL_ADC_Start(&hadc1);
+	//HAL_ADC_Start(&hadc1);
+
+	HAL_ADC_Start_DMA(&hadc1,ADC_Buffer,ADC_CH_NMR);	//Start o ADC no modo DMA
+	// Aqui os valores do ADC serão salvos no Buffer
 
 	 WS2512_Send();
 
@@ -198,16 +211,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-		//downcounter_timer4=1000;
 
-		HAL_ADC_PollForConversion(&hadc1, 1000);
-		readValue = HAL_ADC_GetValue(&hadc1);
+		//HAL_ADC_PollForConversion(&hadc1, 1000);
+		//readValue = HAL_ADC_GetValue(&hadc1);
 
-
-//		var = AnalogHandler(readValue);
-
-		LEDHandler(var);
-		DigitExtract(var);
+		LEDHandler(Speed_Signal_Output);
+		DigitExtract(Speed_Signal_Input);
 
 	}
   /* USER CODE END 3 */
@@ -280,12 +289,12 @@ static void MX_ADC1_Init(void)
   /** Common config
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.NbrOfConversion = 3;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
     Error_Handler();
@@ -293,9 +302,27 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_2;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -481,6 +508,9 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
   /* DMA1_Channel2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
@@ -501,8 +531,8 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, DIGIT3_Pin|DIGIT2_Pin|DIGIT1_Pin, GPIO_PIN_RESET);
@@ -982,7 +1012,7 @@ void LEDHandler(int Value) {
 	HAL_Delay(50);
 }
 
-//TODO Documentar método
+
 int AnalogHandler(int Value){
 
 	/* Processa as novas amostras */
@@ -1127,7 +1157,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			idx++;
 		} else {
 
-			var = AnalogHandler(readValue);		//atualização do valor do sinal analógico
+			//var = AnalogHandler(readValue);		//atualização do valor do sinal analógico
+
+			Speed_Signal_Input = ADC_Buffer[0];
+			Speed_Signal_Output = ADC_Buffer[1];
+			Speed_Mode = ADC_Buffer[2];
 
 			idx = 1;
 		}
