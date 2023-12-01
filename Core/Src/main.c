@@ -29,15 +29,15 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+  ADC_ChannelConfTypeDef sConfig = {0};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
-/* Parâmetros utilizados para leitura dos sensores analógicos */
-#define BSP_ADC_CHANNEL_SIZE 1
-#define BSP_ADC_FILTER_SAMPLES_SIZE 10
-
 /* USER CODE BEGIN PD */
+/* Parâmetros utilizados para leitura dos sensores analógicos */
+#define BSP_ADC_CHANNEL_SIZE 3
+#define BSP_ADC_FILTER_SAMPLES_SIZE 6 //valor anterior = 10
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -47,7 +47,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
-DMA_HandleTypeDef hdma_adc1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
@@ -69,7 +68,8 @@ uint32_t counterInside = 0; //For testing only
 
 int i = 0;
 int number;
-int var = 0;
+int16_t var;
+int16_t Value[3];
 int idx = 0;
 int idx2 = 0;
 int unid, dez, cent,unid_vet[8],dez_vet[8],cent_vet[8];
@@ -84,12 +84,9 @@ int myIndex=7;
 int brilho =23;
 int color,Red=100,Green=200,Blue=255;
 
-int32_t Speed_Signal_Input;
-int32_t Speed_Signal_Output;
-int Speed_Mode;
-
 enum color {
 	branco,
+	eco,
 	verde,
 	amarelo,
 	vermelho,
@@ -121,16 +118,17 @@ static void MX_TIM4_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
-
-
+/* USER CODE BEGIN PFP */
 void DigitExtract(int);
 void Display(int,int);
-int AnalogHandler(int);
+void AnalogHandler(void);
 void LEDHandler(int);
+void ColorModeSelect(void);
 void Set_LED (int, int , int , int );
 void Set_Brightness(int);
 void WS2512_Send (void);
-/* USER CODE BEGIN PFP */
+void ADC_Handler(void);
+void Analog_Buffer(void);
 
 /* USER CODE END PFP */
 
@@ -140,18 +138,55 @@ void WS2512_Send (void);
 #define MAX_LED 20			//numero máximo de leds para acender em sequencia
 #define MAX_Brightness 45	// brilho máximo entre 0 e 45
 #define USE_BRIGHTNESS 1
-#define ADC_CH_NMR 3		// quantidade de canais ADC utilizados
-
-uint32_t ADC_Buffer[3];	//a conversao ADC será salva nesta variável
-
 
 uint8_t LED_Data[MAX_LED][4];
 uint8_t LED_Mod[MAX_LED][4];	//para o brilho
 
-uint16_t readValue;
+uint16_t readValue[3];
+
+int32_t SpeedMode;
+int32_t Sensor_in;
+int32_t Sensor_Out;
 
 int datasentflag = 0;
 
+
+void ADC_Select_CH0 (void){
+	/** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_0;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+//  sConfig.SamplingTime = ADC_SAMPLETIME_28CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+void ADC_Select_CH1 (void){
+	/** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_41CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+void ADC_Select_CH9 (void){
+	/** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_55CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -192,12 +227,9 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim4);
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_GPIO_WritePin(GPIOC, DIG1, 1);
-	HAL_GPIO_WritePin(GPIOC, DIG2, 1);
-	HAL_GPIO_WritePin(GPIOC, DIG3, 1);
-	//HAL_ADC_Start(&hadc1);
-
-	HAL_ADC_Start_DMA(&hadc1,ADC_Buffer,ADC_CH_NMR);	//Start o ADC no modo DMA
-	// Aqui os valores do ADC serão salvos no Buffer
+	HAL_GPIO_WritePin(GPIOC, DIG2, 2);
+	HAL_GPIO_WritePin(GPIOC, DIG3, 3);
+	HAL_ADC_Start(&hadc1);
 
 	 WS2512_Send();
 
@@ -212,11 +244,19 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-		//HAL_ADC_PollForConversion(&hadc1, 1000);
-		//readValue = HAL_ADC_GetValue(&hadc1);
+		ADC_Handler();						//realiza captação dos valores analógicos
 
-		LEDHandler(Speed_Signal_Output);
-		DigitExtract(Speed_Signal_Input);
+		Analog_Buffer();						//Buffer para estabilização dos sinais
+
+		AnalogHandler();					//Conversão dos sinais
+
+		var = Value[1];						//variável utilizada para acionamento display
+		DigitExtract(var);					//Atribuição dos valores usados nos 3 digitos 7 segmentos
+
+		ColorModeSelect();					//Identificação do Modo de atuação do SPEED
+
+		var = Value[2];						//variável utilizada para acionamento dos LEDs
+		LEDHandler(var);					//Acionamento dos LEDs WS2812  utilizando o sinal do Speed
 
 	}
   /* USER CODE END 3 */
@@ -280,7 +320,7 @@ static void MX_ADC1_Init(void)
 
   /* USER CODE END ADC1_Init 0 */
 
-  ADC_ChannelConfTypeDef sConfig = {0};
+//  ADC_ChannelConfTypeDef sConfig = {0};
 
   /* USER CODE BEGIN ADC1_Init 1 */
 
@@ -294,39 +334,41 @@ static void MX_ADC1_Init(void)
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 3;
+  hadc1.Init.NbrOfConversion = 1;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
     Error_Handler();
   }
 
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_0;
-  sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_1;
-  sConfig.Rank = ADC_REGULAR_RANK_2;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_9;
-  sConfig.Rank = ADC_REGULAR_RANK_3;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+//  /** Configure Regular Channel
+//  */
+//  sConfig.Channel = ADC_CHANNEL_0;
+//  sConfig.Rank = ADC_REGULAR_RANK_1;
+//  sConfig.SamplingTime = ADC_SAMPLETIME_28CYCLES_5;
+//  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
+//
+//  /** Configure Regular Channel
+//  */
+//  sConfig.Channel = ADC_CHANNEL_9;
+//  sConfig.Rank = ADC_REGULAR_RANK_2;
+//  sConfig.SamplingTime = ADC_SAMPLETIME_55CYCLES_5;
+//  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
+//
+//  /** Configure Regular Channel
+//  */
+//  sConfig.Channel = ADC_CHANNEL_1;
+//  sConfig.Rank = ADC_REGULAR_RANK_3;
+//  sConfig.SamplingTime = ADC_SAMPLETIME_41CYCLES_5;
+//  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
@@ -508,9 +550,6 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
   /* DMA1_Channel2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
@@ -570,7 +609,56 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void ADC_Handler() {
+
+	ADC_Select_CH0();
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, 1);		//TODO definir se está correto. Padrão = 1000
+	readValue[0] = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+
+	ADC_Select_CH1();
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, 1);
+	readValue[1] = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+
+	ADC_Select_CH9();
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, 1);
+	readValue[2] = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_Stop(&hadc1);
+
+}
+
+void AnalogHandler() {
+
+	//Adequa a escala de cada sinal
+
+		////conversao de 0 a 100% para uso do pedal Ranger
+		int max = 2430;
+		int min = 550;
+
+		Value[1] = ( Sensor_in - min ) *100 / (max - min );
+		if ( Value[1] > 100){
+			Value[1] = 100;
+		}else if ( Value[1] < 0){
+			Value[1] = 0;
+		}
+
+		Value[2] = ( Sensor_Out - min ) *100 / (max - min );
+		if ( Value[2] > 100){
+			Value[2] = 100;
+		}else if ( Value[2] < 0){
+			Value[2] = 0;
+		}
+
+}
+
+//TODO Documentar
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+
+	//Rotina de tratamento da interrupção externa
 
 	currentMillis = HAL_GetTick();
 
@@ -578,54 +666,61 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 		//brilho = brilho + 5;
 
-		switch(color){
+//		switch (color) {
+//
+//		case branco:
+//			Red = 255;
+//			Green = 255;
+//			Blue = 255;
+//
+//			color = verde;
+//
+//			break;
+//
+//		case eco:
+//			Red = 0;
+//			Green = 110;
+//			Blue = 255;
+//
+//			color = amarelo;
+//
+//		case verde:
+//			Red = 0;
+//			Green = 255;
+//			Blue = 0;
+//
+//			color = amarelo;
+//			break;
+//
+//		case amarelo:
+//			Red = 255;
+//			Green = 255;
+//			Blue = 0;
+//
+//			color = vermelho;
+//			break;
+//
+//		case vermelho:
+//			Red = 255;
+//			Green = 0;
+//			Blue = 0;
+//
+//			color = azul;
+//			break;
+//
+//		case azul:
+//			Red = 0;
+//			Green = 0;
+//			Blue = 255;
+//
+//			color = branco;
+//
+//			break;
+//
+//		default:
+//			break;
 
-		case branco:
-			Red=255;
-			Green=255;
-			Blue=255;
-
-			color=verde;
-
-		break;
-
-		case verde:
-			Red=0;
-			Green=255;
-			Blue=0;
-
-			color=amarelo;
-		break;
-
-		case amarelo:
-			Red=255;
-			Green=255;
-			Blue=0;
-
-			color=vermelho;
-			break;
-
-		case vermelho:
-			Red=255;
-			Green=0;
-			Blue=0;
-
-			color = azul;
-			break;
-
-		case azul:
-		Red=0;
-		Green=0;
-		Blue=255;
-
-		color=branco;
-
-		break;
-
-		default:
-			break;
-
-		}
+//		}
 
 
 //		if (brilho >= 45) {
@@ -639,16 +734,78 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	}
 }
 
-
 //TODO Documentar método
-void LEDHandler(int Value) {
+void ColorModeSelect() {
 
+	//Define o modo de atuação SPEED
+
+	if(SpeedMode<430){			//modo original
+		Value[0] = 0;
+	} else if(SpeedMode<800){	//modo Eco
+		Value[0] = 1;
+	} else if(SpeedMode<1200){	//modo Sport
+		Value[0] = 2;
+	} else if(SpeedMode<1510){	//modo Performance
+		Value[0] = 3;
+	} else if(SpeedMode<2000){	//modo Track
+		Value[0] = 4;
+	} else if(SpeedMode<2500){	//modo Valet
+			Value[0] = 4;
+	}
+
+	switch (Value[0]) {
+
+	case branco:
+		Red = 255;
+		Green = 255;
+		Blue = 255;
+		break;
+
+	case eco:
+		Red = 0;
+		Green = 180;
+		Blue = 255;
+		break;
+
+	case verde:
+		Red = 0;
+		Green = 255;
+		Blue = 0;
+		break;
+
+	case amarelo:
+		Red = 255;
+		Green = 255;
+		Blue = 0;
+		break;
+
+	case vermelho:
+		Red = 255;
+		Green = 0;
+		Blue = 0;
+		break;
+
+	case azul:
+		Red = 0;
+		Green = 0;
+		Blue = 255;
+		break;
+
+	default:
+		break;
+
+	}
+
+
+}
+
+void LEDHandler(int Valor) {
 
 
 	//brilho = Value * MAX_Brightness / 100;
 
 	//lógica para acionamento sequencial
-	if (Value == 0 ) {
+	if (Valor == 0 ) {
 		Set_LED(0, 0, 0, 0);
 		Set_LED(1, 0, 0, 0);
 		Set_LED(2, 0, 0, 0);
@@ -669,7 +826,7 @@ void LEDHandler(int Value) {
 		Set_LED(17, 0, 0, 0);
 
 	}
-	if (Value >= 1 && Value < 6) {
+	if (Valor >= 1 && Valor < 6) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, 0, 0, 0);
 		Set_LED(2, 0, 0, 0);
@@ -691,7 +848,7 @@ void LEDHandler(int Value) {
 
 
 
-	} else if (Value >= 6 && Value < 12) {
+	} else if (Valor >= 6 && Valor < 12) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, 0, 0, 0);
@@ -711,7 +868,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 12 && Value < 18) {
+	} else if (Valor >= 12 && Valor < 18) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -732,7 +889,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 18 && Value < 24) {
+	} else if (Valor >= 18 && Valor < 24) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -752,7 +909,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 24 && Value < 30) {
+	} else if (Valor >= 24 && Valor < 30) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -772,7 +929,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 30 && Value < 36) {
+	} else if (Valor >= 30 && Valor < 36) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -792,7 +949,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 36 && Value < 42) {
+	} else if (Valor >= 36 && Valor < 42) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -812,7 +969,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 42 && Value < 48) {
+	} else if (Valor >= 42 && Valor < 48) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -832,7 +989,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 48 && Value < 54) {
+	} else if (Valor >= 48 && Valor < 54) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -852,7 +1009,7 @@ void LEDHandler(int Value) {
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
 
-	} else if (Value >= 54 && Value < 60) {
+	} else if (Valor >= 54 && Valor < 60) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -871,7 +1028,8 @@ void LEDHandler(int Value) {
 		Set_LED(15, 0, 0, 0);
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
-	} else if (Value >= 60 && Value < 66) {
+
+	} else if (Valor >= 60 && Valor < 66) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -890,7 +1048,8 @@ void LEDHandler(int Value) {
 		Set_LED(15, 0, 0, 0);
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
-	} else if (Value >= 66 && Value < 72) {
+
+	} else if (Valor >= 66 && Valor < 72) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -909,7 +1068,8 @@ void LEDHandler(int Value) {
 		Set_LED(15, 0, 0, 0);
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
-	} else if (Value >= 72 && Value < 78) {
+
+	} else if (Valor >= 72 && Valor < 78) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -928,7 +1088,8 @@ void LEDHandler(int Value) {
 		Set_LED(15, 0, 0, 0);
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
-	} else if (Value >= 78 && Value < 84) {
+
+	} else if (Valor >= 78 && Valor < 84) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -947,7 +1108,8 @@ void LEDHandler(int Value) {
 		Set_LED(15, 0, 0, 0);
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
-	} else if (Value >= 84 && Value < 90) {
+
+	} else if (Valor >= 84 && Valor < 90) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -966,7 +1128,8 @@ void LEDHandler(int Value) {
 		Set_LED(15, 0, 0, 0);
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
-	} else if (Value >= 90 && Value < 96) {
+
+	} else if (Valor >= 90 && Valor < 96) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -985,7 +1148,8 @@ void LEDHandler(int Value) {
 		Set_LED(15, Red, Green, Blue);
 		Set_LED(16, 0, 0, 0);
 		Set_LED(17, 0, 0, 0);
-	} else if (Value >= 96 && Value < 101) {
+
+	} else if (Valor >= 96 && Valor < 101) {
 		Set_LED(0, Red, Green, Blue);
 		Set_LED(1, Red, Green, Blue);
 		Set_LED(2, Red, Green, Blue);
@@ -1012,20 +1176,24 @@ void LEDHandler(int Value) {
 	HAL_Delay(50);
 }
 
-
-int AnalogHandler(int Value){
+//TODO Documentar método
+void Analog_Buffer(){
 
 	/* Processa as novas amostras */
 	int32_t accumulator[BSP_ADC_CHANNEL_SIZE] = { 0 };
 	static int16_t filter_sample_index = 0;
 
 	//guarda a amostra atual
-	Buffer_ADC_Filter[0][filter_sample_index] = Value;
+	Buffer_ADC_Filter[0][filter_sample_index] = readValue[0];
+	Buffer_ADC_Filter[1][filter_sample_index] = readValue[1];
+	Buffer_ADC_Filter[2][filter_sample_index] = readValue[2];
 
 	//Processa o novo valor filtrado considerando as ultimas x amostras
 	for (int sample_idx = 0; sample_idx < BSP_ADC_FILTER_SAMPLES_SIZE;++sample_idx)
 	{
 		accumulator[0] += Buffer_ADC_Filter[0][sample_idx];
+		accumulator[1] += Buffer_ADC_Filter[1][sample_idx];
+		accumulator[2] += Buffer_ADC_Filter[2][sample_idx];
 	}
 
 	//wrap around no buffer
@@ -1035,24 +1203,16 @@ int AnalogHandler(int Value){
 		filter_sample_index = 0;
 	}
 
-	int64_t sensor1_64bits = accumulator[0];
 
-	sensor1_64bits = (sensor1_64bits / BSP_ADC_FILTER_SAMPLES_SIZE);
+	//calcula a média dos valores
+	SpeedMode = accumulator[0];
+	SpeedMode = (SpeedMode / BSP_ADC_FILTER_SAMPLES_SIZE);
 
-	//370mV )( 459 bits) a 1930mV (2395 bits)
-	int max = 2137;
-	int min = 968;
+	Sensor_in = accumulator[1];
+	Sensor_in = (Sensor_in / BSP_ADC_FILTER_SAMPLES_SIZE);
 
-	Value = ( sensor1_64bits - min ) *100 / (max - min ); //conversao para uso do pedal Ranger
-
-
-	if ( Value > 100){
-		Value = 100;
-	}else if ( Value < 0){
-		Value = 0;
-	}
-
-	return Value;
+	Sensor_Out= accumulator[2];
+	Sensor_Out = (Sensor_Out / BSP_ADC_FILTER_SAMPLES_SIZE);
 
 }
 
@@ -1074,69 +1234,6 @@ void Set_LED (int LEDnum, int Red, int Green, int Blue)
 
 
 //TODO Documentar método
-void Display(int value, int digit) {
-
-	//downcounter=50;while(downcounter>0){};
-	//HAL_Delay(0.05);
-
-//	HAL_GPIO_WritePin(GPIOB, STCP_pin, 0); // INICIO DA MENSAGEM
-//	downcounter = 5;while (downcounter > 0);
-
-//	for (int index = 7; index >= 0; index--) {
-//
-//		if (digits[value][index] == 1) {
-//			HAL_GPIO_WritePin(GPIOB, DS_pin, 1); //data HIGH
-//		}
-//
-//		else if (digits[value][index] == 0) {
-//			HAL_GPIO_WritePin(GPIOB, DS_pin, 0); //data LOW
-//		}
-//
-//		HAL_GPIO_WritePin(GPIOB, SHCP_pin, 0); //CLOCK LOW
-//		downcounter = 50;while (downcounter > 0);
-//
-//		HAL_GPIO_WritePin(GPIOB, SHCP_pin, 1); //CLOCK HIGH
-//		downcounter = 50;while (downcounter > 0);
-//
-//	}
-
-//	HAL_GPIO_WritePin(GPIOB, STCP_pin, 1);  // fim da mensagem (SEND ou LATCH)
-	//downcounter = 50;while (downcounter > 0);
-
-
-//	HAL_GPIO_WritePin(GPIOC, DIG1, 0);
-//	HAL_GPIO_WritePin(GPIOC, DIG2, 0);
-//	HAL_GPIO_WritePin(GPIOC, DIG3, 0);
-//	downcounter = 50;while (downcounter > 0);
-//
-//
-//	if (digit == 1) {
-//		HAL_GPIO_WritePin(GPIOC, DIG1, 0);
-//		HAL_GPIO_WritePin(GPIOC, DIG2, 0);
-//		HAL_GPIO_WritePin(GPIOC, DIG3, 1);
-//
-//		//downcounter = 5;while (downcounter > 0);
-//
-//	} else if (digit == 2) {
-//		HAL_GPIO_WritePin(GPIOC, DIG1, 0);
-//		HAL_GPIO_WritePin(GPIOC, DIG2, 1);
-//		HAL_GPIO_WritePin(GPIOC, DIG3, 0);
-//
-//		//downcounter = 5;while (downcounter > 0);
-//
-//	} else {
-//		HAL_GPIO_WritePin(GPIOC, DIG1, 1);
-//		HAL_GPIO_WritePin(GPIOC, DIG2, 0);
-//		HAL_GPIO_WritePin(GPIOC, DIG3, 0);
-//
-//		//downcounter = 5;while (downcounter > 0);
-//	}
-
-	//Final do ciclo de cada dígito
-//	downcounter = 100;while (downcounter > 0);
-}
-
-
 void DigitExtract(int num) {
 
 //	int unid, dez, cent;
@@ -1144,27 +1241,31 @@ void DigitExtract(int num) {
 	num = num / 10;
 	dez = num % 10;
 	cent = num / 10;
-
 }
 
+//TODO Documentar método
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
-	if (htim->Instance == TIM4) //frequencia do timer4 é de 5 kHz, st=200us
+	//************************************ TIMER 4 ************************************
+
+	if (htim->Instance == TIM4) //frequencia do timer4 é de 5 kHz, sample time = 200us
 	{
 
-		if (idx < 200) {		//atualizar a contagem a cada 500 ms
+
+		//atualização do valor do sinal analógico a cada 500 ms
+
+		if (idx < 200) {
 
 			idx++;
 		} else {
 
-			//var = AnalogHandler(readValue);		//atualização do valor do sinal analógico
-
-			Speed_Signal_Input = ADC_Buffer[0];
-			Speed_Signal_Output = ADC_Buffer[1];
-			Speed_Mode = ADC_Buffer[2];
 
 			idx = 1;
 		}
+
+
+
+		//atualização do contador timer4
 
 		if (downcounter_timer4 > 0) {
 			downcounter_timer4--;
@@ -1173,17 +1274,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		counter_timer4++;
 	}
 
+
+	//************************************ TIMER 3 ************************************
+
 	if (htim->Instance == TIM3) { //frequencia do timer3 é de 50 kHz, time=20us
 
 		if (downcounter > 0) {
 			downcounter--;
 		}
 
+
 		else { 					//downcounter liberado
 
-			// INICIO DO CICLO DE 100 Hz ->
 
-			switch (fsm) {
+
+
+			// INICIO DO CICLO DE 100 Hz para acionamento dos 3 DISPLAYs 7 SEGMENTOS
+
+
+			switch (fsm) {			//fsm é o index da mensagem entregue ao CI HC595 para multiplexação
 
 			case 0: //inicio da mensagem 1
 			case 2:
@@ -1363,6 +1472,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 			}
 
 			// fim do ciclo interno dos 3 digitos
+
 			fsm++;
 
 		}
