@@ -2098,7 +2098,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin
  80012ec:	2200      	movs	r2, #0
- 80012ee:	f44f 5178 	mov.w	r1, #15872	; 0x3e00
+ 80012ee:	f44f 411e 	mov.w	r1, #40448	; 0x9e00
  80012f2:	4827      	ldr	r0, [pc, #156]	; (8001390 <MX_GPIO_Init+0x130>)
  80012f4:	f003 fbcc 	bl	8004a90 <HAL_GPIO_WritePin>
                           |TRACK_Pin, GPIO_PIN_RESET);
@@ -2160,7 +2160,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pins : ORIGINAL_Pin ECO_Pin SPORT_Pin PERFORMANCE_Pin
                            TRACK_Pin */
   GPIO_InitStruct.Pin = ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin
- 800134c:	f44f 5378 	mov.w	r3, #15872	; 0x3e00
+ 800134c:	f44f 431e 	mov.w	r3, #40448	; 0x9e00
  8001350:	613b      	str	r3, [r7, #16]
                           |TRACK_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -2539,7 +2539,7 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA,
  80015c6:	2201      	movs	r2, #1
- 80015c8:	f44f 5170 	mov.w	r1, #15360	; 0x3c00
+ 80015c8:	f44f 411c 	mov.w	r1, #39936	; 0x9c00
  80015cc:	4845      	ldr	r0, [pc, #276]	; (80016e4 <ColorModeSelect+0x1d8>)
  80015ce:	f003 fa5f 	bl	8004a90 <HAL_GPIO_WritePin>
 				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
@@ -2570,7 +2570,7 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA,
  80015f2:	2201      	movs	r2, #1
- 80015f4:	f44f 5168 	mov.w	r1, #14848	; 0x3a00
+ 80015f4:	f44f 411a 	mov.w	r1, #39424	; 0x9a00
  80015f8:	483a      	ldr	r0, [pc, #232]	; (80016e4 <ColorModeSelect+0x1d8>)
  80015fa:	f003 fa49 	bl	8004a90 <HAL_GPIO_WritePin>
 				ORIGINAL_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
@@ -2602,7 +2602,7 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA,
  800161e:	2201      	movs	r2, #1
- 8001620:	f44f 5158 	mov.w	r1, #13824	; 0x3600
+ 8001620:	f44f 4116 	mov.w	r1, #38400	; 0x9600
  8001624:	482f      	ldr	r0, [pc, #188]	; (80016e4 <ColorModeSelect+0x1d8>)
  8001626:	f003 fa33 	bl	8004a90 <HAL_GPIO_WritePin>
 				ECO_Pin | ORIGINAL_Pin | PERFORMANCE_Pin | TRACK_Pin,
@@ -2633,7 +2633,7 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA,
  800164a:	2201      	movs	r2, #1
- 800164c:	f44f 5138 	mov.w	r1, #11776	; 0x2e00
+ 800164c:	f44f 410e 	mov.w	r1, #36352	; 0x8e00
  8001650:	4824      	ldr	r0, [pc, #144]	; (80016e4 <ColorModeSelect+0x1d8>)
  8001652:	f003 fa1d 	bl	8004a90 <HAL_GPIO_WritePin>
 				ECO_Pin | SPORT_Pin | ORIGINAL_Pin | TRACK_Pin,
@@ -2658,7 +2658,7 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA, TRACK_Pin, GPIO_PIN_RESET);
  800166a:	2200      	movs	r2, #0
- 800166c:	f44f 5100 	mov.w	r1, #8192	; 0x2000
+ 800166c:	f44f 4100 	mov.w	r1, #32768	; 0x8000
  8001670:	481c      	ldr	r0, [pc, #112]	; (80016e4 <ColorModeSelect+0x1d8>)
  8001672:	f003 fa0d 	bl	8004a90 <HAL_GPIO_WritePin>
 
@@ -2695,7 +2695,7 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA,
  80016a2:	2201      	movs	r2, #1
- 80016a4:	f44f 5170 	mov.w	r1, #15360	; 0x3c00
+ 80016a4:	f44f 411c 	mov.w	r1, #39936	; 0x9c00
  80016a8:	480e      	ldr	r0, [pc, #56]	; (80016e4 <ColorModeSelect+0x1d8>)
  80016aa:	f003 f9f1 	bl	8004a90 <HAL_GPIO_WritePin>
 				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
@@ -2714,7 +2714,7 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA,
  80016bc:	2201      	movs	r2, #1
- 80016be:	f44f 5170 	mov.w	r1, #15360	; 0x3c00
+ 80016be:	f44f 411c 	mov.w	r1, #39936	; 0x9c00
  80016c2:	4808      	ldr	r0, [pc, #32]	; (80016e4 <ColorModeSelect+0x1d8>)
  80016c4:	f003 f9e4 	bl	8004a90 <HAL_GPIO_WritePin>
 				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
