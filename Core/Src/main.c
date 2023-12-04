@@ -579,6 +579,10 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, SHCP_pin_Pin|STCP_pin_Pin|DS_pin_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin
+                          |TRACK_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pins : DIGIT3_Pin DIGIT2_Pin DIGIT1_Pin */
   GPIO_InitStruct.Pin = DIGIT3_Pin|DIGIT2_Pin|DIGIT1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -586,11 +590,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  /*Configure GPIO pin : BOTAO_Pin */
+  GPIO_InitStruct.Pin = BOTAO_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(BOTAO_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : SHCP_pin_Pin STCP_pin_Pin DS_pin_Pin */
   GPIO_InitStruct.Pin = SHCP_pin_Pin|STCP_pin_Pin|DS_pin_Pin;
@@ -598,6 +602,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : ORIGINAL_Pin ECO_Pin SPORT_Pin PERFORMANCE_Pin
+                           TRACK_Pin */
+  GPIO_InitStruct.Pin = ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin
+                          |TRACK_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
@@ -636,17 +649,20 @@ void AnalogHandler() {
 	//Adequa a escala de cada sinal
 
 		////conversao de 0 a 100% para uso do pedal Ranger
-		int max = 2430;
-		int min = 550;
+		int max1 = 2290;
+		int min1 = 560;
 
-		Value[1] = ( Sensor_in - min ) *100 / (max - min );
+		int max2 = 2370;
+		int min2 = 545;
+
+		Value[1] = ( Sensor_in - min1 ) *100 / (max1 - min1 );
 		if ( Value[1] > 100){
 			Value[1] = 100;
 		}else if ( Value[1] < 0){
 			Value[1] = 0;
 		}
 
-		Value[2] = ( Sensor_Out - min ) *100 / (max - min );
+		Value[2] = ( Sensor_Out - min2 ) *100 / (max2 - min2 );
 		if ( Value[2] > 100){
 			Value[2] = 100;
 		}else if ( Value[2] < 0){
@@ -759,39 +775,89 @@ void ColorModeSelect() {
 		Red = 255;
 		Green = 255;
 		Blue = 255;
+
+		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOA,
+				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				GPIO_PIN_SET);
+
 		break;
 
 	case eco:
 		Red = 0;
 		Green = 180;
 		Blue = 255;
+
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin, GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOA,
+				ORIGINAL_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				GPIO_PIN_SET);
+
+
 		break;
 
 	case verde:
 		Red = 0;
 		Green = 255;
 		Blue = 0;
+
+		HAL_GPIO_WritePin(GPIOA, SPORT_Pin , GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOA,
+				ECO_Pin | ORIGINAL_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				GPIO_PIN_SET);
+
 		break;
 
 	case amarelo:
 		Red = 255;
 		Green = 255;
 		Blue = 0;
+
+		HAL_GPIO_WritePin(GPIOA, PERFORMANCE_Pin, GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOA,
+				ECO_Pin | SPORT_Pin | ORIGINAL_Pin | TRACK_Pin,
+				GPIO_PIN_SET);
+
 		break;
 
 	case vermelho:
 		Red = 255;
 		Green = 0;
 		Blue = 0;
+
+		HAL_GPIO_WritePin(GPIOA, TRACK_Pin, GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOA,
+				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | ORIGINAL_Pin,
+				GPIO_PIN_SET);
+
 		break;
 
 	case azul:
 		Red = 0;
 		Green = 0;
 		Blue = 255;
+
+		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOA,
+				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				GPIO_PIN_SET);
+
 		break;
 
 	default:
+
+		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOA,
+				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				GPIO_PIN_SET);
+
 		break;
 
 	}
