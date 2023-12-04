@@ -779,8 +779,10 @@ void ColorModeSelect() {
 		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
 				GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 		break;
 
@@ -792,8 +794,10 @@ void ColorModeSelect() {
 		HAL_GPIO_WritePin(GPIOA, ECO_Pin, GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOA,
-				ORIGINAL_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				ORIGINAL_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
 				GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 
 		break;
@@ -806,8 +810,10 @@ void ColorModeSelect() {
 		HAL_GPIO_WritePin(GPIOA, SPORT_Pin , GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | ORIGINAL_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				ECO_Pin | ORIGINAL_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
 				GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 		break;
 
@@ -819,8 +825,10 @@ void ColorModeSelect() {
 		HAL_GPIO_WritePin(GPIOA, PERFORMANCE_Pin, GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | ORIGINAL_Pin | TRACK_Pin,
+				ECO_Pin | SPORT_Pin | ORIGINAL_Pin | GPIO_PIN_5,
 				GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 		break;
 
@@ -829,7 +837,8 @@ void ColorModeSelect() {
 		Green = 0;
 		Blue = 0;
 
-		HAL_GPIO_WritePin(GPIOA, TRACK_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOA,
 				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | ORIGINAL_Pin,
@@ -845,8 +854,10 @@ void ColorModeSelect() {
 		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
 				GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 		break;
 
@@ -855,8 +866,10 @@ void ColorModeSelect() {
 		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | TRACK_Pin,
+				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
 				GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 		break;
 
