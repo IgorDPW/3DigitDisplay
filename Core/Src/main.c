@@ -61,28 +61,22 @@ static volatile uint16_t Buffer_ADC_DMA[BSP_ADC_CHANNEL_SIZE];
 /* Buffer utilizado para armazenar as ultimas x amostras obtidas pelo ADC */
 static volatile uint16_t Buffer_ADC_Filter[BSP_ADC_CHANNEL_SIZE][BSP_ADC_FILTER_SAMPLES_SIZE];
 
-uint32_t previousMillis = 0;
-uint32_t currentMillis = 0;
-uint32_t counterOutside = 0; //For testing only
-uint32_t counterInside = 0; //For testing only
-
 int i = 0;
-int number;
-int16_t var;
+//int number;
+int16_t var,var1,var2;
 int16_t Value[3];
 int idx = 0;
-int idx2 = 0;
+//int idx2 = 0;
 int unid, dez, cent,unid_vet[8],dez_vet[8],cent_vet[8];
 int fsm = 0;
-int index1 = 0;
-int display_clock = 0;
+//int index1 = 0;
+//int display_clock = 0;
 int downcounter = 0;
 int downcounter_timer4= 0;
-int counter_timer4= 0;
 int myIndex=7;
 
 int brilho =23;
-int color,Red=100,Green=200,Blue=255;
+int color,Red=100,Green=200,Blue=255, index_LED=0, max_LED=0;
 
 enum color {
 	branco,
@@ -129,13 +123,14 @@ void Set_Brightness(int);
 void WS2512_Send (void);
 void ADC_Handler(void);
 void Analog_Buffer(void);
+void ApagaLeds(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-#define MAX_LED 20			//numero máximo de leds para acender em sequencia
+#define MAX_LED 100			//numero máximo de leds para acender em sequencia
 #define MAX_Brightness 45	// brilho máximo entre 0 e 45
 #define USE_BRIGHTNESS 1
 
@@ -161,6 +156,7 @@ void ADC_Select_CH0 (void){
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
+
   }
 }
 
@@ -233,8 +229,6 @@ int main(void)
 
 	 WS2512_Send();
 
-	 counter_timer4=0;
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -244,19 +238,26 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
+
+
 		ADC_Handler();						//realiza captação dos valores analógicos
 
 		Analog_Buffer();						//Buffer para estabilização dos sinais
 
 		AnalogHandler();					//Conversão dos sinais
 
-		var = Value[1];						//variável utilizada para acionamento display
+		var = Value[2];						//variável utilizada para acionamento display
 		DigitExtract(var);					//Atribuição dos valores usados nos 3 digitos 7 segmentos
 
 		ColorModeSelect();					//Identificação do Modo de atuação do SPEED
 
-		var = Value[2];						//variável utilizada para acionamento dos LEDs
+		var = Value[1];						//variável utilizada para acionamento dos LEDs
+
+		//ApagaLeds();
+
 		LEDHandler(var);					//Acionamento dos LEDs WS2812  utilizando o sinal do Speed
+
+		//HAL_Delay(50);
 
 	}
   /* USER CODE END 3 */
@@ -577,11 +578,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, DIGIT3_Pin|DIGIT2_Pin|DIGIT1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, SHCP_pin_Pin|STCP_pin_Pin|DS_pin_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, SHCP_pin_Pin|STCP_pin_Pin|DS_pin_Pin|TRACK_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin
-                          |TRACK_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : DIGIT3_Pin DIGIT2_Pin DIGIT1_Pin */
   GPIO_InitStruct.Pin = DIGIT3_Pin|DIGIT2_Pin|DIGIT1_Pin;
@@ -596,17 +596,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BOTAO_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SHCP_pin_Pin STCP_pin_Pin DS_pin_Pin */
-  GPIO_InitStruct.Pin = SHCP_pin_Pin|STCP_pin_Pin|DS_pin_Pin;
+  /*Configure GPIO pins : SHCP_pin_Pin STCP_pin_Pin DS_pin_Pin TRACK_Pin */
+  GPIO_InitStruct.Pin = SHCP_pin_Pin|STCP_pin_Pin|DS_pin_Pin|TRACK_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : ORIGINAL_Pin ECO_Pin SPORT_Pin PERFORMANCE_Pin
-                           TRACK_Pin */
-  GPIO_InitStruct.Pin = ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin
-                          |TRACK_Pin;
+  /*Configure GPIO pins : ORIGINAL_Pin ECO_Pin SPORT_Pin PERFORMANCE_Pin TRACK_Pin */
+  GPIO_InitStruct.Pin = ORIGINAL_Pin|ECO_Pin|SPORT_Pin|PERFORMANCE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -676,78 +674,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 	//Rotina de tratamento da interrupção externa
 
-	currentMillis = HAL_GetTick();
+//	currentMillis = HAL_GetTick();
+//
+//	if ((currentMillis - previousMillis) > 200) {
+//
+//		previousMillis = currentMillis;
 
-	if ((currentMillis - previousMillis) > 200) {
-
-		//brilho = brilho + 5;
-
-//		switch (color) {
-//
-//		case branco:
-//			Red = 255;
-//			Green = 255;
-//			Blue = 255;
-//
-//			color = verde;
-//
-//			break;
-//
-//		case eco:
-//			Red = 0;
-//			Green = 110;
-//			Blue = 255;
-//
-//			color = amarelo;
-//
-//		case verde:
-//			Red = 0;
-//			Green = 255;
-//			Blue = 0;
-//
-//			color = amarelo;
-//			break;
-//
-//		case amarelo:
-//			Red = 255;
-//			Green = 255;
-//			Blue = 0;
-//
-//			color = vermelho;
-//			break;
-//
-//		case vermelho:
-//			Red = 255;
-//			Green = 0;
-//			Blue = 0;
-//
-//			color = azul;
-//			break;
-//
-//		case azul:
-//			Red = 0;
-//			Green = 0;
-//			Blue = 255;
-//
-//			color = branco;
-//
-//			break;
-//
-//		default:
-//			break;
-
-//		}
-
-
-//		if (brilho >= 45) {
-//			brilho = 1;
-//		}
-
-
-
-		previousMillis = currentMillis;
-
-	}
+//	}
 }
 
 //TODO Documentar método
@@ -761,12 +694,12 @@ void ColorModeSelect() {
 		Value[0] = 1;
 	} else if(SpeedMode<1200){	//modo Sport
 		Value[0] = 2;
-	} else if(SpeedMode<1510){	//modo Performance
+	} else if(SpeedMode<1600){	//modo Performance
 		Value[0] = 3;
 	} else if(SpeedMode<2000){	//modo Track
 		Value[0] = 4;
 	} else if(SpeedMode<2500){	//modo Valet
-			Value[0] = 4;
+		Value[0] = 5;
 	}
 
 	switch (Value[0]) {
@@ -776,13 +709,11 @@ void ColorModeSelect() {
 		Green = 255;
 		Blue = 255;
 
+//		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin | SPORT_Pin | PERFORMANCE_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
-
-		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
-				GPIO_PIN_SET);
-
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_RESET);
 
 		break;
 
@@ -791,13 +722,10 @@ void ColorModeSelect() {
 		Green = 180;
 		Blue = 255;
 
-		HAL_GPIO_WritePin(GPIOA, ECO_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin, GPIO_PIN_SET);
 
-		HAL_GPIO_WritePin(GPIOA,
-				ORIGINAL_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
-				GPIO_PIN_SET);
-
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin | SPORT_Pin | PERFORMANCE_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_RESET);
 
 
 		break;
@@ -809,11 +737,8 @@ void ColorModeSelect() {
 
 		HAL_GPIO_WritePin(GPIOA, SPORT_Pin , GPIO_PIN_RESET);
 
-		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | ORIGINAL_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
-				GPIO_PIN_SET);
-
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin | ORIGINAL_Pin | PERFORMANCE_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_RESET);
 
 		break;
 
@@ -822,13 +747,10 @@ void ColorModeSelect() {
 		Green = 255;
 		Blue = 0;
 
-		HAL_GPIO_WritePin(GPIOA, PERFORMANCE_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, PERFORMANCE_Pin, GPIO_PIN_SET);
 
-		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | ORIGINAL_Pin | GPIO_PIN_5,
-				GPIO_PIN_SET);
-
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin | SPORT_Pin | ORIGINAL_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_RESET);
 
 		break;
 
@@ -837,12 +759,9 @@ void ColorModeSelect() {
 		Green = 0;
 		Blue = 0;
 
-		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_SET);
 
-		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | ORIGINAL_Pin,
-				GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | ORIGINAL_Pin, GPIO_PIN_RESET);
 
 		break;
 
@@ -851,408 +770,1142 @@ void ColorModeSelect() {
 		Green = 0;
 		Blue = 255;
 
+		//HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_SET);
+
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin | SPORT_Pin | PERFORMANCE_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
-
-		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
-				GPIO_PIN_SET);
-
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 		break;
 
 	default:
 
-		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOA, ORIGINAL_Pin, GPIO_PIN_SET);
 
-		HAL_GPIO_WritePin(GPIOA,
-				ECO_Pin | SPORT_Pin | PERFORMANCE_Pin | GPIO_PIN_5,
-				GPIO_PIN_SET);
-
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(GPIOA, ECO_Pin | SPORT_Pin | PERFORMANCE_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_RESET);
 
 		break;
-
 	}
-
-
 }
 
 void LEDHandler(int Valor) {
 
+	int led = 0;
 
-	//brilho = Value * MAX_Brightness / 100;
+	//apagar todos os leds
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0); led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;
+	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);	led++;	Set_LED(led, 0, 0, 0);
 
-	//lógica para acionamento sequencial
-	if (Valor == 0 ) {
-		Set_LED(0, 0, 0, 0);
-		Set_LED(1, 0, 0, 0);
-		Set_LED(2, 0, 0, 0);
-		Set_LED(3, 0, 0, 0);
-		Set_LED(4, 0, 0, 0);
-		Set_LED(5, 0, 0, 0);
-		Set_LED(6, 0, 0, 0);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
+	var1 = Value[2];	var2 =  Value[0] * 17;
+
+	if ( (Value[0] != 0) && (Value[0] != 5)) {
+
+		if (Valor == 0) {
+
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED1
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED2
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED3
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED4
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED5
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED6
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED7
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED8
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED9
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED10
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED11
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED12
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED13
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED14
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED15
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED16
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED17
+
+		} else if (Valor >= 1 && Valor < 6) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED2
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED3
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED4
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED5
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED6
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED7
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED8
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED9
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED10
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED11
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED12
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED13
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED14
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED15
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED16
+			Set_LED(var2, 0, 0, 0);			var2++;		//LED17
+
+		} else if (Valor >= 6 && Valor < 12) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED1
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED2
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED3
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED4
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED5
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED6
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED7
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED8
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED9
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED10
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED11
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED12
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED13
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED14
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED15
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED16
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED17
+
+		} else if (Valor >= 12 && Valor < 18) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED1
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED2
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED3
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED4
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED5
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED6
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED7
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED8
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED9
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED10
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED11
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED12
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED13
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED14
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED15
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED16
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED17
+
+		} else if (Valor >= 18 && Valor < 24) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED1
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED2
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED3
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED4
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED5
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED6
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED7
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED8
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED9
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED10
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED11
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED12
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED13
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED14
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED15
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED16
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED17
+
+		} else if (Valor >= 24 && Valor < 30) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED1
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED2
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED3
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED4
+			Set_LED(var2, Red, Green, Blue);			var2++;	//LED5
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED6
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED7
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED8
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED9
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED10
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED11
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED12
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED13
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED14
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED15
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED16
+			Set_LED(var2, 0, 0, 0);			var2++;			//LED17
+
+		} else if (Valor >= 30 && Valor < 36) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 36 && Valor < 42) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 42 && Valor < 48) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 48 && Valor < 54) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 54 && Valor < 60) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 60 && Valor < 66) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 66 && Valor < 72) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 72 && Valor < 78) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 78 && Valor < 84) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 84 && Valor < 90) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 90 && Valor < 96) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, 0, 0, 0);			var2++;
+
+		} else if (Valor >= 96 && Valor < 101) {
+
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+			Set_LED(var2, Red, Green, Blue);			var2++;
+		}
+	}
+
+	if (Value[0] == 5) {
+
+		if (Valor == 0) {
+
+			Set_LED	(	0	,	0	,	0	, 	0	)	;		//LED1
+			Set_LED	(	1	,	0	,	0	, 	0	)	;		//LED2
+			Set_LED	(	2	,	0	,	0	, 	0	)	;		//LED3
+			Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+			Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+			Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+			Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 1 && Valor < 6) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	0	,	0	, 	0	)	;		//LED2
+			Set_LED	(	2	,	0	,	0	, 	0	)	;		//LED3
+			Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+			Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+			Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+			Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 6 && Valor < 12) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	0	,	0	, 	0	)	;		//LED3
+			Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+			Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+			Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+			Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 12 && Valor < 18) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+			Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+			Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+			Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 18 && Valor < 24) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+			Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+			Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 24 && Valor < 30) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+			Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 30 && Valor < 36) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 36 && Valor < 42) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 42 && Valor < 48) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 48 && Valor < 54) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 54 && Valor < 60) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 60 && Valor < 66) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	Red	,	Green	, 	Blue	)	;		//LED11
+			Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 66 && Valor < 72) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	Red	,	Green	, 	Blue	)	;		//LED11
+			Set_LED	(	11	,	Red	,	Green	, 	Blue	)	;		//LED12
+			Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 72 && Valor < 78) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	Red	,	Green	, 	Blue	)	;		//LED11
+			Set_LED	(	11	,	Red	,	Green	, 	Blue	)	;		//LED12
+			Set_LED	(	12	,	Red	,	Green	, 	Blue	)	;		//LED13
+			Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 78 && Valor < 84) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	Red	,	Green	, 	Blue	)	;		//LED11
+			Set_LED	(	11	,	Red	,	Green	, 	Blue	)	;		//LED12
+			Set_LED	(	12	,	Red	,	Green	, 	Blue	)	;		//LED13
+			Set_LED	(	13	,	Red	,	Green	, 	Blue	)	;		//LED14
+			Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 84 && Valor < 90) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	Red	,	Green	, 	Blue	)	;		//LED11
+			Set_LED	(	11	,	Red	,	Green	, 	Blue	)	;		//LED12
+			Set_LED	(	12	,	Red	,	Green	, 	Blue	)	;		//LED13
+			Set_LED	(	13	,	Red	,	Green	, 	Blue	)	;		//LED14
+			Set_LED	(	14	,	Red	,	Green	, 	Blue	)	;		//LED15
+			Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 90 && Valor < 96) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	Red	,	Green	, 	Blue	)	;		//LED11
+			Set_LED	(	11	,	Red	,	Green	, 	Blue	)	;		//LED12
+			Set_LED	(	12	,	Red	,	Green	, 	Blue	)	;		//LED13
+			Set_LED	(	13	,	Red	,	Green	, 	Blue	)	;		//LED14
+			Set_LED	(	14	,	Red	,	Green	, 	Blue	)	;		//LED15
+			Set_LED	(	15	,	Red	,	Green	, 	Blue	)	;		//LED16
+			Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+		} else if (Valor >= 96 && Valor < 101) {
+
+			Set_LED	(	0	,	Red	,	Green	, 	Blue	)	;		//LED1
+			Set_LED	(	1	,	Red	,	Green	, 	Blue	)	;		//LED2
+			Set_LED	(	2	,	Red	,	Green	, 	Blue	)	;		//LED3
+			Set_LED	(	3	,	Red	,	Green	, 	Blue	)	;		//LED4
+			Set_LED	(	4	,	Red	,	Green	, 	Blue	)	;		//LED5
+			Set_LED	(	5	,	Red	,	Green	, 	Blue	)	;		//LED6
+			Set_LED	(	6	,	Red	,	Green	, 	Blue	)	;		//LED7
+			Set_LED	(	7	,	Red	,	Green	, 	Blue	)	;		//LED8
+			Set_LED	(	8	,	Red	,	Green	, 	Blue	)	;		//LED9
+			Set_LED	(	9	,	Red	,	Green	, 	Blue	)	;		//LED10
+			Set_LED	(	10	,	Red	,	Green	, 	Blue	)	;		//LED11
+			Set_LED	(	11	,	Red	,	Green	, 	Blue	)	;		//LED12
+			Set_LED	(	12	,	Red	,	Green	, 	Blue	)	;		//LED13
+			Set_LED	(	13	,	Red	,	Green	, 	Blue	)	;		//LED14
+			Set_LED	(	14	,	Red	,	Green	, 	Blue	)	;		//LED15
+			Set_LED	(	15	,	Red	,	Green	, 	Blue	)	;		//LED16
+			Set_LED	(	16	,	Red	,	Green	, 	Blue	)	;		//LED17
+		}
+
+
+	}else {
+
+	if (var1 == 0) {
+
+		Set_LED	(	0	,	0	,	0	, 	0	)	;		//LED1
+		Set_LED	(	1	,	0	,	0	, 	0	)	;		//LED2
+		Set_LED	(	2	,	0	,	0	, 	0	)	;		//LED3
+		Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+		Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+		Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+		Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 1 && var1 < 6) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	0	,	0	, 	0	)	;		//LED2
+		Set_LED	(	2	,	0	,	0	, 	0	)	;		//LED3
+		Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+		Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+		Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+		Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 6 && var1 < 12) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	0	,	0	, 	0	)	;		//LED3
+		Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+		Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+		Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+		Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 12 && var1 < 18) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	0	,	0	, 	0	)	;		//LED4
+		Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+		Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+		Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 18 && var1 < 24) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	0	,	0	, 	0	)	;		//LED5
+		Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+		Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 24 && var1 < 30) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	0	,	0	, 	0	)	;		//LED6
+		Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 30 && var1 < 36) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	0	,	0	, 	0	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 36 && var1 < 42) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	0	,	0	, 	0	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 42 && var1 < 48) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	0	,	0	, 	0	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 48 && var1 < 54) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	0	,	0	, 	0	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 54 && var1 < 60) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	0	,	0	, 	0	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 60 && var1 < 66) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	255	,	255	, 	255	)	;		//LED11
+		Set_LED	(	11	,	0	,	0	, 	0	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 66 && var1 < 72) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	255	,	255	, 	255	)	;		//LED11
+		Set_LED	(	11	,	255	,	255	, 	255	)	;		//LED12
+		Set_LED	(	12	,	0	,	0	, 	0	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 72 && var1 < 78) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	255	,	255	, 	255	)	;		//LED11
+		Set_LED	(	11	,	255	,	255	, 	255	)	;		//LED12
+		Set_LED	(	12	,	255	,	255	, 	255	)	;		//LED13
+		Set_LED	(	13	,	0	,	0	, 	0	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 78 && var1 < 84) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	255	,	255	, 	255	)	;		//LED11
+		Set_LED	(	11	,	255	,	255	, 	255	)	;		//LED12
+		Set_LED	(	12	,	255	,	255	, 	255	)	;		//LED13
+		Set_LED	(	13	,	255	,	255	, 	255	)	;		//LED14
+		Set_LED	(	14	,	0	,	0	, 	0	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 84 && var1 < 90) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	255	,	255	, 	255	)	;		//LED11
+		Set_LED	(	11	,	255	,	255	, 	255	)	;		//LED12
+		Set_LED	(	12	,	255	,	255	, 	255	)	;		//LED13
+		Set_LED	(	13	,	255	,	255	, 	255	)	;		//LED14
+		Set_LED	(	14	,	255	,	255	, 	255	)	;		//LED15
+		Set_LED	(	15	,	0	,	0	, 	0	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 90 && var1 < 96) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	255	,	255	, 	255	)	;		//LED11
+		Set_LED	(	11	,	255	,	255	, 	255	)	;		//LED12
+		Set_LED	(	12	,	255	,	255	, 	255	)	;		//LED13
+		Set_LED	(	13	,	255	,	255	, 	255	)	;		//LED14
+		Set_LED	(	14	,	255	,	255	, 	255	)	;		//LED15
+		Set_LED	(	15	,	255	,	255	, 	255	)	;		//LED16
+		Set_LED	(	16	,	0	,	0	, 	0	)	;		//LED17
+
+	} else if (var1 >= 96 && var1 < 101) {
+
+		Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
+		Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
+		Set_LED	(	2	,	255	,	255	, 	255	)	;		//LED3
+		Set_LED	(	3	,	255	,	255	, 	255	)	;		//LED4
+		Set_LED	(	4	,	255	,	255	, 	255	)	;		//LED5
+		Set_LED	(	5	,	255	,	255	, 	255	)	;		//LED6
+		Set_LED	(	6	,	255	,	255	, 	255	)	;		//LED7
+		Set_LED	(	7	,	255	,	255	, 	255	)	;		//LED8
+		Set_LED	(	8	,	255	,	255	, 	255	)	;		//LED9
+		Set_LED	(	9	,	255	,	255	, 	255	)	;		//LED10
+		Set_LED	(	10	,	255	,	255	, 	255	)	;		//LED11
+		Set_LED	(	11	,	255	,	255	, 	255	)	;		//LED12
+		Set_LED	(	12	,	255	,	255	, 	255	)	;		//LED13
+		Set_LED	(	13	,	255	,	255	, 	255	)	;		//LED14
+		Set_LED	(	14	,	255	,	255	, 	255	)	;		//LED15
+		Set_LED	(	15	,	255	,	255	, 	255	)	;		//LED16
+		Set_LED	(	16	,	255	,	255	, 	255	)	;		//LED17
 
 	}
-	if (Valor >= 1 && Valor < 6) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, 0, 0, 0);
-		Set_LED(2, 0, 0, 0);
-		Set_LED(3, 0, 0, 0);
-		Set_LED(4, 0, 0, 0);
-		Set_LED(5, 0, 0, 0);
-		Set_LED(6, 0, 0, 0);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-
-
-	} else if (Valor >= 6 && Valor < 12) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, 0, 0, 0);
-		Set_LED(3, 0, 0, 0);
-		Set_LED(4, 0, 0, 0);
-		Set_LED(5, 0, 0, 0);
-		Set_LED(6, 0, 0, 0);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 12 && Valor < 18) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, 0, 0, 0);
-		Set_LED(3, 0, 0, 0);
-		Set_LED(4, 0, 0, 0);
-		Set_LED(5, 0, 0, 0);
-		Set_LED(6, 0, 0, 0);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 18 && Valor < 24) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, 0, 0, 0);
-		Set_LED(5, 0, 0, 0);
-		Set_LED(6, 0, 0, 0);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 24 && Valor < 30) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, 0, 0, 0);
-		Set_LED(6, 0, 0, 0);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 30 && Valor < 36) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, 0, 0, 0);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 36 && Valor < 42) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, 0, 0, 0);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 42 && Valor < 48) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, 0, 0, 0);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 48 && Valor < 54) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, 0, 0, 0);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 54 && Valor < 60) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10, 0, 0, 0);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 60 && Valor < 66) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10, Red, Green, Blue);
-		Set_LED(11, 0, 0, 0);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 66 && Valor < 72) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10, Red, Green, Blue);
-		Set_LED(11, Red, Green, Blue);
-		Set_LED(12, 0, 0, 0);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 72 && Valor < 78) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10, Red, Green, Blue);
-		Set_LED(11, Red, Green, Blue);
-		Set_LED(12, Red, Green, Blue);
-		Set_LED(13, 0, 0, 0);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 78 && Valor < 84) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10,Red, Green, Blue);
-		Set_LED(11, Red, Green, Blue);
-		Set_LED(12, Red, Green, Blue);
-		Set_LED(13, Red, Green, Blue);
-		Set_LED(14, 0, 0, 0);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 84 && Valor < 90) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10, Red, Green, Blue);
-		Set_LED(11, Red, Green, Blue);
-		Set_LED(12, Red, Green, Blue);
-		Set_LED(13, Red, Green, Blue);
-		Set_LED(14, Red, Green, Blue);
-		Set_LED(15, 0, 0, 0);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 90 && Valor < 96) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10, Red, Green, Blue);
-		Set_LED(11, Red, Green, Blue);
-		Set_LED(12, Red, Green, Blue);
-		Set_LED(13, Red, Green, Blue);
-		Set_LED(14, Red, Green, Blue);
-		Set_LED(15, Red, Green, Blue);
-		Set_LED(16, 0, 0, 0);
-		Set_LED(17, 0, 0, 0);
-
-	} else if (Valor >= 96 && Valor < 101) {
-		Set_LED(0, Red, Green, Blue);
-		Set_LED(1, Red, Green, Blue);
-		Set_LED(2, Red, Green, Blue);
-		Set_LED(3, Red, Green, Blue);
-		Set_LED(4, Red, Green, Blue);
-		Set_LED(5, Red, Green, Blue);
-		Set_LED(6, Red, Green, Blue);
-		Set_LED(7, Red, Green, Blue);
-		Set_LED(8, Red, Green, Blue);
-		Set_LED(9, Red, Green, Blue);
-		Set_LED(10, Red, Green, Blue);
-		Set_LED(11, Red, Green, Blue);
-		Set_LED(12, Red, Green, Blue);
-		Set_LED(13, Red, Green, Blue);
-		Set_LED(14, Red, Green, Blue);
-		Set_LED(15, Red, Green, Blue);
-		Set_LED(16, Red, Green, Blue);
-		Set_LED(17, 0, 0, 0);
 	}
-
 
 	Set_Brightness(brilho);
 	WS2512_Send();
-	HAL_Delay(50);
+	//HAL_Delay(50);
 }
 
 //TODO Documentar método
@@ -1312,6 +1965,41 @@ void Set_LED (int LEDnum, int Red, int Green, int Blue)
 }
 
 
+void ApagaLeds() {
+
+//	HAL_GPIO_WritePin(GPIOA,
+//			ORIGINAL_Pin | ECO_Pin | SPORT_Pin | PERFORMANCE_Pin,
+//			GPIO_PIN_RESET);
+//	HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_RESET);
+//
+//	Set_LED(0, 0, 0, 0);
+//	Set_LED(1, 0, 0, 0);
+//	Set_LED(2, 0, 0, 0);
+//	Set_LED(3, 0, 0, 0);
+//	Set_LED(4, 0, 0, 0);
+//	Set_LED(5, 0, 0, 0);
+//	Set_LED(6, 0, 0, 0);
+//	Set_LED(7, 0, 0, 0);
+//	Set_LED(8, 0, 0, 0);
+//	Set_LED(9, 0, 0, 0);
+//	Set_LED(10, 0, 0, 0);
+//	Set_LED(11, 0, 0, 0);
+//	Set_LED(12, 0, 0, 0);
+//	Set_LED(13, 0, 0, 0);
+//	Set_LED(14, 0, 0, 0);
+//	Set_LED(15, 0, 0, 0);
+//	Set_LED(16, 0, 0, 0);
+//	Set_LED(17, 0, 0, 0);
+
+	Set_Brightness(0);
+	WS2512_Send();
+//
+//	HAL_GPIO_WritePin(GPIOA,
+//			ORIGINAL_Pin | ECO_Pin | SPORT_Pin | PERFORMANCE_Pin, GPIO_PIN_SET);
+//	HAL_GPIO_WritePin(GPIOB, TRACK_Pin, GPIO_PIN_SET);
+
+}
+
 //TODO Documentar método
 void DigitExtract(int num) {
 
@@ -1336,21 +2024,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 		if (idx < 200) {
 
 			idx++;
+
 		} else {
 
-
 			idx = 1;
-		}
 
+		}
 
 
 		//atualização do contador timer4
 
-		if (downcounter_timer4 > 0) {
-			downcounter_timer4--;
-		}
-
-		counter_timer4++;
+//		if (downcounter_timer4 > 0) {
+//			downcounter_timer4--;
+//		}
 	}
 
 
@@ -1585,12 +2271,6 @@ void WS2512_Send(void) {
 	uint32_t indx = 0;
 	uint32_t color;
 
-//	for (int i=0; i<50; i++)
-//	{
-//		pwmData[indx] = 0;
-//		indx++;
-//	}
-
 	for (int i = 0; i < MAX_LED; i++)
 	{
 		color = ((LED_Mod[i][1] << 16) | (LED_Mod[i][2] << 8) | (LED_Mod[i][3]));
@@ -1607,7 +2287,7 @@ void WS2512_Send(void) {
 		}
 	}
 
-	for (int i = 0; i < 50; i++)//intervalor de tempo de 50us antes da próxima msg
+	for (int i = 0; i < 50; i++)//intervalo de tempo de 50us antes da próxima msg
 			{
 		pwmData[indx] = 0;
 		indx++;

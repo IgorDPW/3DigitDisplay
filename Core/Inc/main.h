@@ -84,8 +84,8 @@ void Error_Handler(void);
 #define SPORT_GPIO_Port GPIOA
 #define PERFORMANCE_Pin GPIO_PIN_12
 #define PERFORMANCE_GPIO_Port GPIOA
-#define TRACK_Pin GPIO_PIN_15
-#define TRACK_GPIO_Port GPIOA
+#define TRACK_Pin GPIO_PIN_5
+#define TRACK_GPIO_Port GPIOB
 #define STCP_pin_Pin GPIO_PIN_6
 #define STCP_pin_GPIO_Port GPIOB
 #define DS_pin_Pin GPIO_PIN_7
