@@ -647,11 +647,8 @@ void AnalogHandler() {
 	//Adequa a escala de cada sinal
 
 		////conversao de 0 a 100% para uso do pedal Ranger
-		int max1 = 3350;//2290;
-		int min1 = 595;
-
-		int max2 = 3350;//2370;
-		int min2 = 595;
+		int max1 = 3350;//3000;//3350;
+		int min1 = 690;//595;
 
 		Value[1] = ( Sensor_in - min1 ) *100 / (max1 - min1 );
 		if ( Value[1] > 100){
@@ -659,6 +656,12 @@ void AnalogHandler() {
 		}else if ( Value[1] < 0){
 			Value[1] = 0;
 		}
+
+
+
+
+		int max2 = 3350;//2370;
+		int min2 = 690;//595;
 
 		Value[2] = ( Sensor_Out - min2 ) *100 / (max2 - min2 );
 		if ( Value[2] > 100){
@@ -688,15 +691,15 @@ void ColorModeSelect() {
 
 	//Define o modo de atuação SPEED
 
-	if(SpeedMode<600){			//modo original
+	if(SpeedMode<1120){			//modo original
 		Value[0] = 0;
-	} else if(SpeedMode<1200){	//modo Eco
+	} else if(SpeedMode<1660){	//modo Eco
 		Value[0] = 1;
-	} else if(SpeedMode<1800){	//modo Sport
+	} else if(SpeedMode<2250){	//modo Sport
 		Value[0] = 2;
-	} else if(SpeedMode<2500){	//modo Performance
+	} else if(SpeedMode<2800){	//modo Performance
 		Value[0] = 3;
-	} else if(SpeedMode<3000){	//modo Track
+	} else if(SpeedMode<3500){	//modo Track
 		Value[0] = 4;
 	} else if(SpeedMode<4000){	//modo Valet
 		Value[0] = 5;
@@ -2374,7 +2377,7 @@ void LEDHandler(int Valor) {
 			Set_LED	(	19	,	0	,	0	, 	0	)	;		//LED20
 			Set_LED	(	20	,	0	,	0	, 	0	)	;		//LED21
 
-		} else if (var1 >= 91 && var1 < 100) {
+		} else if (var1 >= 91 && var1 < 96) {
 
 			Set_LED	(	0	,	255	,	255	, 	255	)	;		//LED1
 			Set_LED	(	1	,	255	,	255	, 	255	)	;		//LED2
@@ -2478,7 +2481,7 @@ void Analog_Buffer(){
 
 	//wrap around no buffer
 	filter_sample_index++;
-	if (filter_sample_index >= BSP_ADC_FILTER_SAMPLES_SIZE)
+	if (filter_sample_index >= BSP_ADC_FILTER_SAMPLES_SIZE )
 	{
 		filter_sample_index = 0;
 	}
@@ -2486,7 +2489,7 @@ void Analog_Buffer(){
 
 	//calcula a média dos valores
 	SpeedMode = accumulator[0];
-	SpeedMode = (SpeedMode / BSP_ADC_FILTER_SAMPLES_SIZE);
+	SpeedMode = (SpeedMode /  BSP_ADC_FILTER_SAMPLES_SIZE );
 
 	Sensor_in = accumulator[1];
 	Sensor_in = (Sensor_in / BSP_ADC_FILTER_SAMPLES_SIZE);
